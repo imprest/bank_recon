@@ -16,10 +16,10 @@ defmodule BankRecon do
 
   @title "Bank Reconciler"
   # @size {390, 660}
-  @picker_file 1
-  @btn_calc 2
-  @label_interest 3
-  @text_interest 4
+  @text_year 1
+  @text_month 2
+  @opt_bank 3
+  @btn_calc 4
   @text_result 5
 
   @wxHORIZONTAL :wx_const.wxHORIZONTAL()
@@ -61,11 +61,12 @@ defmodule BankRecon do
     panel = :wxPanel.new(frame)
 
     main_sizer = :wxBoxSizer.new(@wxVERTICAL)
-    top_sizer = :wxStaticBoxSizer.new(@wxVERTICAL, panel, label: "Select Bank CSV File:")
+    top_sizer = :wxStaticBoxSizer.new(@wxHORIZONTAL, panel, label: "Select Month and Bank:")
 
-    file_picker = :wxFilePickerCtrl.new(panel, @picker_file)
+    btn_calc = :wxButton.new(panel, @btn_calc, label: "&Reconcile")
+    :wxButton.connect(btn_calc, :command_button_clicked, userData: "&Reconcile")
 
-    :wxSizer.add(top_sizer, file_picker, border: 5, flag: @wxALL ||| @wxEXPAND)
+    :wxSizer.add(top_sizer, btn_calc, border: 5, flag: @wxALL ||| @wxEXPAND)
     :wxSizer.add(main_sizer, top_sizer, border: 10, flag: @wxALL ||| @wxEXPAND)
 
     :wxPanel.setSizer(panel, main_sizer)
@@ -75,7 +76,8 @@ defmodule BankRecon do
     :wxFrame.show(frame)
 
     state = %{
-      panel: panel
+      panel: panel,
+      btn: btn_calc
     }
 
     {frame, state}
@@ -87,4 +89,10 @@ defmodule BankRecon do
   end
 
   def handle_event(wx(event: wxClose()), state), do: {:stop, :normal, state}
+
+  def handle_event(wx(id: @btn_calc, event: wxCommand()), state) do
+    result = BankRecon.Ledger.run("BB", 2022, 5)
+    IO.inspect(result)
+    {:noreply, state}
+  end
 end
