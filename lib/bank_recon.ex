@@ -1,5 +1,6 @@
 defmodule BankRecon do
   import Bitwise
+  import :wx_const
 
   require Record
   Record.defrecordp(:wx, Record.extract(:wx, from_lib: "wx/include/wx.hrl"))
@@ -22,18 +23,6 @@ defmodule BankRecon do
   @btn_calc 4
   @text_result 5
 
-  @wxHORIZONTAL :wx_const.wxHORIZONTAL()
-  @wxVERTICAL :wx_const.wxVERTICAL()
-  @wxEXPAND :wx_const.wxEXPAND()
-  @wxALL :wx_const.wxALL()
-  @wxRIGHT :wx_const.wxRIGHT()
-  @wxLEFT :wx_const.wxLEFT()
-  @wxTOP :wx_const.wxTOP()
-  @wxBOTTOM :wx_const.wxBOTTOM()
-  @wxDEFAULT :wx_const.wxDEFAULT()
-  @wxTE_MULTILINE :wx_const.wxTE_MULTILINE()
-  @wxALIGN_CENTER :wx_const.wxALIGN_CENTER()
-
   @moduledoc """
   Documentation for `BankRecon`.
   """
@@ -52,22 +41,22 @@ defmodule BankRecon do
   end
 
   def init(_args \\ []) do
-    wx = :wx.new()
-    frame = :wxFrame.new(wx, -1, @title)
+    :wx.new()
+    frame = :wxFrame.new(:wx.null(), wxID_ANY(), @title)
     :wxFrame.center(frame)
     :wxFrame.connect(frame, :size)
     :wxFrame.connect(frame, :close_window)
 
     panel = :wxPanel.new(frame)
 
-    main_sizer = :wxBoxSizer.new(@wxVERTICAL)
-    top_sizer = :wxStaticBoxSizer.new(@wxHORIZONTAL, panel, label: "Select Month and Bank:")
+    main_sizer = :wxBoxSizer.new(wxVERTICAL())
+    top_sizer = :wxStaticBoxSizer.new(wxHORIZONTAL(), panel, label: "Select Month and Bank:")
 
     btn_calc = :wxButton.new(panel, @btn_calc, label: "&Reconcile")
     :wxButton.connect(btn_calc, :command_button_clicked, userData: "&Reconcile")
 
-    :wxSizer.add(top_sizer, btn_calc, border: 5, flag: @wxALL ||| @wxEXPAND)
-    :wxSizer.add(main_sizer, top_sizer, border: 10, flag: @wxALL ||| @wxEXPAND)
+    :wxSizer.add(top_sizer, btn_calc, border: 5, flag: wxALL() ||| wxEXPAND())
+    :wxSizer.add(main_sizer, top_sizer, border: 10, flag: wxALL() ||| wxEXPAND())
 
     :wxPanel.setSizer(panel, main_sizer)
     :wxSizer.fit(main_sizer, panel)
