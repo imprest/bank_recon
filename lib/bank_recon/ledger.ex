@@ -1,64 +1,13 @@
 defmodule BankRecon.Ledger do
   alias BankRecon.DbaseParser
   alias NimbleCSV.RFC4180, as: CSV
+  alias Decimal, as: D
 
   @bank_csv_dir "/home/hvaria/Documents/Accounts/"
   @prog_dbf_dir "/home/hvaria/Documents/backup/"
 
-  def test(code, year, month) do
-    short_code = Calendar.strftime(Date.new!(year, month, 1), "%y%m")
-
-    [data_cur_y, data_prev_y] = data_folder(year, month)
-
-    folder =
-      case code do
-        "MB" -> "UMB"
-        "EB" -> "Ecobank"
-        "BB" -> "ABSA"
-        "GB" -> "GT"
-      end
-
-    {bank, program} =
-      [
-        "#{@prog_dbf_dir}#{data_cur_y}/FIT#{short_code}.dbf"
-      ]
-      |> Enum.flat_map(fn x -> parse_dbf(x, code) end)
-      |> combine_cash_splits(code)
-      # |> Enum.sort_by(& &1.date, Date)
-      |> Enum.into(%{}, fn x -> {x.id, x} end)
-      |> compare_entries(
-        bank_csv("#{@bank_csv_dir}#{folder}/20#{short_code}.csv", code),
-        []
-      )
-
-    {cur, uncleared} = {rm_contras(bank), csv(Map.to_list(program))}
-  end
-
   def run(code, year, month) do
-    short_code = Calendar.strftime(Date.new!(year, month, 1), "%y%m")
-
-    [data_cur_y, data_prev_y] = data_folder(year, month)
-
-    folder =
-      case code do
-        "MB" -> "UMB"
-        "EB" -> "Ecobank"
-        "BB" -> "ABSA"
-        "GB" -> "GT"
-      end
-
-    {bank, program} =
-      [
-        "#{@bank_csv_dir}#{data_cur_y}/FIT#{short_code}.dbf"
-      ]
-      |> Enum.flat_map(fn x -> parse_dbf(x, code) end)
-      |> combine_cash_splits(code)
-      # |> Enum.sort_by(& &1.date, Date)
-      |> Enum.into(%{}, fn x -> {x.id, x} end)
-      |> compare_entries(
-        bank_csv("#{@bank_csv_dir}#{folder}/20#{short_code}.csv", code),
-        []
-      )
+    cur_month = Calendar.strftime(Date.new!(year, month, 1), "%y%m")
 
     prev_month =
       case month do
@@ -66,24 +15,35 @@ defmodule BankRecon.Ledger do
         _ -> Calendar.strftime(Date.new!(year, month - 1, 1), "%y%m")
       end
 
-    {_, prev} =
-      [
-        "#{@bank_csv_dir}#{data_prev_y}/FIT#{prev_month}.dbf"
-      ]
-      |> Enum.flat_map(fn x -> parse_dbf(x, code) end)
+    [data_cur_y, data_prev_y] = data_folder(year, month)
+
+    folder =
+      case code do
+        "MB" -> "UMB"
+        "EB" -> "Ecobank"
+        "BB" -> "ABSA"
+        "GB" -> "GT"
+      end
+
+    cur_month_dbf = Path.join("#{@prog_dbf_dir}#{data_cur_y}", "FIT#{cur_month}.dbf")
+    cur_bank_csv = Path.join("#{@bank_csv_dir}#{folder}", "20#{cur_month}.csv")
+    prev_month_dbf = Path.join("#{@prog_dbf_dir}#{data_prev_y}", "FIT#{prev_month}.dbf")
+    prev_bank_csv = Path.join("#{@bank_csv_dir}#{folder}", "20#{prev_month}.csv")
+
+    {bank, program} =
+      parse_dbf(cur_month_dbf, code)
       |> combine_cash_splits(code)
-      # |> Enum.sort_by(& &1.date, Date)
       |> Enum.into(%{}, fn x -> {x.id, x} end)
-      |> compare_entries(
-        bank_csv("#{@bank_csv_dir}#{folder}/20#{prev_month}.csv", code),
-        []
-      )
+      |> compare_entries(bank_csv(cur_bank_csv, code), [])
+
+    {_, prev} =
+      parse_dbf(prev_month_dbf, code)
+      |> combine_cash_splits(code)
+      |> Enum.into(%{}, fn x -> {x.id, x} end)
+      |> compare_entries(bank_csv(prev_bank_csv, code), [])
 
     {cur, uncleared} = {rm_contras(bank), csv(Map.to_list(program))}
-    # {cur, uncleared} = {rm_contras(bank), program}
     {compare_entries(prev, cur, []), uncleared}
-    # {rm_contras(bank), csv(Map.to_list(program))}
-    # {rm_contras(bank), program}
   end
 
   defp data_folder(year, month) do
@@ -108,18 +68,6 @@ defmodule BankRecon.Ledger do
       else
         [x.id, "#{x.desc} #{x.post_desc}", "", x.amount]
       end
-
-      # IO.puts([
-      #   Calendar.strftime(x.date, "%d-%m-%Y"),
-      #   ",\"",
-      #   x.ref,
-      #   "\",\"",
-      #   x.desc,
-      #   "\",",
-      #   Decimal.to_string(x.debit),
-      #   ",",
-      #   Decimal.to_string(x.credit)
-      # ])
     end)
   end
 
@@ -150,7 +98,7 @@ defmodule BankRecon.Ledger do
   defp find_contra(_position, _amount, _, true, acc), do: {true, acc}
 
   defp find_contra(position, amount, [h | t], found, acc) do
-    if Enum.at(h, position) !== "" and Enum.at(h, position) === amount do
+    if Enum.at(h, position) !== "" and D.compare(Enum.at(h, position), amount) === :eq do
       find_contra(position, amount, t, true, :lists.reverse(acc) ++ t)
     else
       find_contra(position, amount, t, found, [h | acc])
@@ -172,7 +120,7 @@ defmodule BankRecon.Ledger do
       # so that it matches bank csv statement amounts
       if String.starts_with?(id, "BR R") or String.starts_with?(id, "BP P") do
         if length(x) !== 1 do
-          Enum.reduce(t, h, fn y, acc -> %{acc | amount: acc.amount + y.amount} end)
+          Enum.reduce(t, h, fn y, acc -> %{acc | amount: D.add(acc.amount, y.amount)} end)
         else
           h
         end
@@ -190,7 +138,7 @@ defmodule BankRecon.Ledger do
       # so that it matches bank csv statement amounts
       if String.starts_with?(id, "BR R") do
         if length(x) !== 1 do
-          Enum.reduce(t, h, fn y, acc -> %{acc | amount: acc.amount + y.amount} end)
+          Enum.reduce(t, h, fn y, acc -> %{acc | amount: D.add(acc.amount, y.amount)} end)
         else
           h
         end
@@ -213,7 +161,7 @@ defmodule BankRecon.Ledger do
       # Credit Entry
       temp =
         Enum.filter(program, fn {_id, m} ->
-          m.drcr === "C" and m.amount === credit
+          m.drcr === "C" and D.compare(m.amount, credit) === :eq
         end)
 
       r =
@@ -239,7 +187,7 @@ defmodule BankRecon.Ledger do
       # Debit Entry
       r =
         Enum.find(program, :not_found, fn {_id, m} ->
-          m.drcr === "D" and m.amount === debit and
+          m.drcr === "D" and D.compare(m.amount, debit) === :eq and
             Date.compare(m.date, date) !== :gt
         end)
 
@@ -346,17 +294,8 @@ defmodule BankRecon.Ledger do
         if x["TR_CODE"] == code do
           %{
             id:
-              x["TR_DATE"] <>
-                " " <>
-                x["TR_TYPE"] <>
-                " " <>
-                x["TR_NOC"] <>
-                " " <> Integer.to_string(x["TR_NON"]) <> " " <> Integer.to_string(x["TR_SRNO"]),
-            tx_code:
-              x["TR_TYPE"] <>
-                " " <>
-                x["TR_NOC"] <>
-                " " <> Integer.to_string(x["TR_NON"]),
+              "#{x["TR_DATE"]} #{x["TR_TYPE"]} #{x["TR_NOC"]} #{Integer.to_string(x["TR_NON"])} #{Integer.to_string(x["TR_SRNO"])}",
+            tx_code: "#{x["TR_TYPE"]} #{x["TR_NOC"]} #{Integer.to_string(x["TR_NON"])}",
             srno: x["TR_SRNO"],
             date: to_date(x["TR_DATE"]),
             desc: x["TR_QTY"],
@@ -364,71 +303,11 @@ defmodule BankRecon.Ledger do
             sl_code: x["TR_SLCD"],
             post_desc: clean_string(x["TR_DESC"]),
             drcr: x["TR_DRCR"],
-            amount: x["TR_AMT"]
+            amount: D.new("#{x["TR_AMT"]}")
           }
         end
       end
     )
-  end
-
-  def parse_dbf_by_gl(dbf, code) do
-    DbaseParser.parse(
-      dbf,
-      [
-        "TR_TYPE",
-        "TR_CODE",
-        "TR_NON",
-        "TR_NOC",
-        "TR_SRNO",
-        "TR_DATE",
-        "TR_GLCD",
-        "TR_SLCD",
-        "TR_DRCR",
-        "TR_AMT",
-        "TR_DESC",
-        "TR_QTY"
-      ],
-      fn x ->
-        if x["TR_GLCD"] == code do
-          %{
-            id:
-              x["TR_DATE"] <>
-                " " <>
-                x["TR_TYPE"] <>
-                " " <>
-                x["TR_NOC"] <>
-                " " <> Integer.to_string(x["TR_NON"]) <> " " <> Integer.to_string(x["TR_SRNO"]),
-            tx_code:
-              x["TR_TYPE"] <>
-                " " <>
-                x["TR_NOC"] <>
-                " " <> Integer.to_string(x["TR_NON"]),
-            srno: x["TR_SRNO"],
-            date: to_date(x["TR_DATE"]),
-            desc: x["TR_QTY"],
-            gl_code: x["TR_GLCD"],
-            sl_code: x["TR_SLCD"],
-            post_desc: clean_string(x["TR_DESC"]),
-            drcr: x["TR_DRCR"],
-            amount: x["TR_AMT"]
-          }
-        end
-      end
-    )
-  end
-
-  def print_to_console(x) do
-    case x[:drcr] do
-      "D" ->
-        IO.puts(
-          "#{x[:date]} \t #{String.pad_leading(Float.to_string(x[:amount]), 10)} \t\t\t #{x[:desc]} - #{x[:post_desc]}"
-        )
-
-      "C" ->
-        IO.puts(
-          "#{x[:date]} \t #{String.pad_leading(Float.to_string(x[:amount]), 22)} \t #{x[:desc]} - #{x[:post_desc]}"
-        )
-    end
   end
 
   @spec to_date(<<_::_*64>>) :: Date.t()

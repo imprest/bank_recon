@@ -22,6 +22,7 @@ defmodule BankRecon.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:decimal, "~> 2.0"},
       {:nimble_csv, "~> 1.2"}
     ]
   end
