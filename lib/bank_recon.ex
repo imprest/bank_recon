@@ -16,12 +16,9 @@ defmodule BankRecon do
   @behaviour :wx_object
 
   @title "Bank Reconciler"
-  # @size {390, 660}
-  @text_year 1
-  @text_month 2
-  @opt_bank 3
-  @btn_calc 4
-  @text_result 5
+  @file_picker 1
+  @btn_calc 2
+  @text_result 3
 
   @moduledoc """
   Documentation for `BankRecon`.
@@ -46,17 +43,36 @@ defmodule BankRecon do
     :wxFrame.center(frame)
     :wxFrame.connect(frame, :size)
     :wxFrame.connect(frame, :close_window)
+    status_bar = :wxFrame.createStatusBar(frame)
 
     panel = :wxPanel.new(frame)
 
     main_sizer = :wxBoxSizer.new(wxVERTICAL())
-    top_sizer = :wxStaticBoxSizer.new(wxHORIZONTAL(), panel, label: "Select Month and Bank:")
+    top_sizer = :wxStaticBoxSizer.new(wxVERTICAL(), panel, label: "Select CSV File:")
+
+    file_picker = :wxFilePickerCtrl.new(panel, @file_picker)
+    :wxFilePickerCtrl.connect(file_picker, :command_filepicker_changed)
 
     btn_calc = :wxButton.new(panel, @btn_calc, label: "&Reconcile")
     :wxButton.connect(btn_calc, :command_button_clicked, userData: "&Reconcile")
+    :wxButton.disable(btn_calc)
 
+    text_result =
+      :wxTextCtrl.new(panel, @text_result,
+        size: {380, 450},
+        style: wxDEFAULT() ||| wxTE_MULTILINE() ||| wxEXPAND()
+      )
+
+    :wxSizer.add(top_sizer, file_picker, border: 5, flag: wxALL() ||| wxEXPAND())
     :wxSizer.add(top_sizer, btn_calc, border: 5, flag: wxALL() ||| wxEXPAND())
+
     :wxSizer.add(main_sizer, top_sizer, border: 10, flag: wxALL() ||| wxEXPAND())
+
+    :wxSizer.add(main_sizer, text_result,
+      border: 10,
+      proportion: 4,
+      flag: wxLEFT() ||| wxRIGHT() ||| wxBOTTOM() ||| wxEXPAND()
+    )
 
     :wxPanel.setSizer(panel, main_sizer)
     :wxSizer.fit(main_sizer, panel)
@@ -66,7 +82,10 @@ defmodule BankRecon do
 
     state = %{
       panel: panel,
-      btn: btn_calc
+      file_path: "",
+      btn_calc: btn_calc,
+      text_result: text_result,
+      status_bar: status_bar
     }
 
     {frame, state}
@@ -79,9 +98,37 @@ defmodule BankRecon do
 
   def handle_event(wx(event: wxClose()), state), do: {:stop, :normal, state}
 
-  def handle_event(wx(id: @btn_calc, event: wxCommand()), state) do
-    result = BankRecon.Ledger.run("BB", 2022, 5)
+  def handle_event(
+        wx(event: wxFileDirPicker(type: :command_filepicker_changed, path: path)),
+        state = %{btn_calc: btn_calc}
+      ) do
+    if Path.extname(path) === ".csv" do
+      :wxButton.enable(btn_calc)
+    else
+      :wxButton.disable(btn_calc)
+    end
+
+    {:noreply, %{state | file_path: path}}
+  end
+
+  def handle_event(
+        wx(id: @btn_calc, event: wxCommand()),
+        state = %{text_result: text_result, file_path: file_path, status_bar: status_bar}
+      ) do
+    bank_dir = Path.dirname(file_path) |> Path.basename()
+    IO.inspect(bank_dir, label: "Bank dir")
+
+    code =
+      case bank_dir do
+        "UMB" -> "MB"
+        "ABSA" -> "BB"
+        "Ecobank" -> "EB"
+        "GT" -> "GB"
+      end
+
+    result = BankRecon.Ledger.run(code, 2022, 5)
     IO.inspect(result)
+    :wxTextCtrl.setValue(text_result, "working")
     {:noreply, state}
   end
 end
