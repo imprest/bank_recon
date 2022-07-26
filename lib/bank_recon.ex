@@ -126,9 +126,23 @@ defmodule BankRecon do
         "GT" -> "GB"
       end
 
-    result = BankRecon.Ledger.run(code, 2022, 5)
-    IO.inspect(result)
-    :wxTextCtrl.setValue(text_result, "working")
+    {{missing, _}, uncleared} = BankRecon.Ledger.run(code, 2022, 5)
+
+    result = List.to_string(format_result(missing, uncleared))
+    :wxTextCtrl.setValue(text_result, result)
     {:noreply, state}
+  end
+
+  defp format_result(missing, uncleared) do
+    missing = to_csv(missing)
+    uncleared = to_csv(uncleared)
+
+    ["Missing entries\n", missing, "\n", "Uncleared Entries\n", uncleared]
+  end
+
+  defp to_csv(data) do
+    Enum.map(data, fn [id, desc, debit, credit] ->
+      "#{id},\"#{desc}\",#{debit},#{credit}\n"
+    end)
   end
 end
