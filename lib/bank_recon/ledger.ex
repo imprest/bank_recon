@@ -3,10 +3,9 @@ defmodule BankRecon.Ledger do
   alias NimbleCSV.RFC4180, as: CSV
   alias Decimal, as: D
 
-  @bank_csv_dir "/home/hvaria/Documents/Accounts/"
   @prog_dbf_dir "/home/hvaria/Documents/backup/"
 
-  def run(code, year, month) do
+  def run(bank_csv_dir, code, year, month) do
     cur_month = Calendar.strftime(Date.new!(year, month, 1), "%y%m")
 
     prev_month =
@@ -17,18 +16,10 @@ defmodule BankRecon.Ledger do
 
     [data_cur_y, data_prev_y] = data_folder(year, month)
 
-    folder =
-      case code do
-        "MB" -> "UMB"
-        "EB" -> "Ecobank"
-        "BB" -> "ABSA"
-        "GB" -> "GT"
-      end
-
     cur_month_dbf = Path.join("#{@prog_dbf_dir}#{data_cur_y}", "FIT#{cur_month}.dbf")
-    cur_bank_csv = Path.join("#{@bank_csv_dir}#{folder}", "20#{cur_month}.csv")
+    cur_bank_csv = Path.join(bank_csv_dir, "20#{cur_month}.csv")
     prev_month_dbf = Path.join("#{@prog_dbf_dir}#{data_prev_y}", "FIT#{prev_month}.dbf")
-    prev_bank_csv = Path.join("#{@bank_csv_dir}#{folder}", "20#{prev_month}.csv")
+    prev_bank_csv = Path.join(bank_csv_dir, "20#{prev_month}.csv")
 
     {bank, program} =
       parse_dbf(cur_month_dbf, code)
@@ -210,7 +201,7 @@ defmodule BankRecon.Ledger do
           [bank_date(date), String.slice(desc, 69, 40), debit, credit]
 
         "EB" ->
-          [date, _value, _ref, desc, debit, credit, _bal] = x
+          [date, desc, _value, debit, credit, _bal] = x
 
           if String.starts_with?(credit, "-") do
             [

@@ -2,6 +2,8 @@ defmodule BankRecon do
   import Bitwise
   import :wx_const
 
+  alias Decimal, as: D
+
   require Record
   Record.defrecordp(:wx, Record.extract(:wx, from_lib: "wx/include/wx.hrl"))
   Record.defrecordp(:wxClose, Record.extract(:wxClose, from_lib: "wx/include/wx.hrl"))
@@ -59,7 +61,7 @@ defmodule BankRecon do
 
     text_result =
       :wxTextCtrl.new(panel, @text_result,
-        size: {380, 450},
+        size: {680, 650},
         style: wxDEFAULT() ||| wxTE_MULTILINE() ||| wxEXPAND()
       )
 
@@ -116,33 +118,61 @@ defmodule BankRecon do
         state = %{text_result: text_result, file_path: file_path, status_bar: status_bar}
       ) do
     bank_dir = Path.dirname(file_path) |> Path.basename()
-    IO.inspect(bank_dir, label: "Bank dir")
 
-    code =
+    bank_code =
       case bank_dir do
         "UMB" -> "MB"
         "ABSA" -> "BB"
-        "Ecobank" -> "EB"
+        "ECOBANK" -> "EB"
         "GT" -> "GB"
+        _ -> bank_dir
       end
 
-    {{missing, _}, uncleared} = BankRecon.Ledger.run(code, 2022, 5)
+    if bank_code === bank_dir do
+      :wxStatusBar.setStatusText(status_bar, "Bank Folder \"#{bank_code}\" is not known.")
+      {:noreply, state}
+    else
+      filename = Path.basename(file_path, ".csv")
+      year = String.slice(filename, 0, 4) |> String.to_integer()
+      month = String.slice(filename, -2, 2) |> String.to_integer()
 
-    result = List.to_string(format_result(missing, uncleared))
-    :wxTextCtrl.setValue(text_result, result)
-    {:noreply, state}
+      try do
+        {{missing, _}, uncleared} =
+          BankRecon.Ledger.run(Path.dirname(file_path), bank_code, year, month)
+
+        result = List.to_string(format_result(bank_dir, missing, uncleared))
+        :wxTextCtrl.setValue(text_result, result)
+        :wxStatusBar.setStatusText(status_bar, "Done.")
+        {:noreply, state}
+      rescue
+        err ->
+          IO.inspect(err)
+          :wxStatusBar.setStatusText(status_bar, "Error in parsing bank csv.")
+          {:noreply, state}
+      end
+    end
   end
 
-  defp format_result(missing, uncleared) do
+  defp format_result(bank_dir, missing, uncleared) do
     missing = to_csv(missing)
     uncleared = to_csv(uncleared)
 
-    ["Missing entries\n", missing, "\n", "Uncleared Entries\n", uncleared]
+    [
+      "Missing #{bank_dir} entries\n",
+      missing,
+      "\n",
+      "Uncleared #{bank_dir} Entries\n",
+      uncleared
+    ]
   end
 
   defp to_csv(data) do
     Enum.map(data, fn [id, desc, debit, credit] ->
-      "#{id},\"#{desc}\",#{debit},#{credit}\n"
+      if debit === "" do
+        "#{id},\"#{desc}\",#{debit},#{D.to_string(credit, :xsd)}\n"
+      else
+        "#{id},\"#{desc}\",#{D.to_string(debit, :xsd)},#{credit}\n"
+      end
     end)
   end
 end
