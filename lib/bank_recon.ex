@@ -137,10 +137,12 @@ defmodule BankRecon do
       month = String.slice(filename, -2, 2) |> String.to_integer()
 
       try do
-        {{missing, _}, uncleared} =
+        {{missing, prev_month_uncleared_map}, uncleared} =
           BankRecon.Ledger.run(Path.dirname(file_path), bank_code, year, month)
 
-        result = List.to_string(format_result(bank_dir, missing, uncleared))
+        result =
+          List.to_string(format_result(bank_dir, missing, uncleared, prev_month_uncleared_map))
+
         :wxTextCtrl.setValue(text_result, result)
         :wxStatusBar.setStatusText(status_bar, "Done.")
         {:noreply, state}
@@ -153,17 +155,34 @@ defmodule BankRecon do
     end
   end
 
-  defp format_result(bank_dir, missing, uncleared) do
+  defp format_result(bank_dir, missing, uncleared, prev_month_uncleared_map) do
     missing = to_csv(missing)
     uncleared = to_csv(uncleared)
+    prev_month_uncleared = to_csv(csv(prev_month_uncleared_map))
 
     [
+      "Previous Month Uncleared #{bank_dir} entries\n",
+      prev_month_uncleared,
+      "\n",
       "Missing #{bank_dir} entries\n",
       missing,
       "\n",
       "Uncleared #{bank_dir} Entries\n",
       uncleared
     ]
+  end
+
+  defp csv(map) do
+    map
+    |> Enum.into([], fn {_id, x} -> x end)
+    |> Enum.sort_by(& &1.date, Date)
+    |> Enum.map(fn x ->
+      if x.drcr === "D" do
+        [x.id, "#{x.desc} #{x.post_desc}", x.amount, ""]
+      else
+        [x.id, "#{x.desc} #{x.post_desc}", "", x.amount]
+      end
+    end)
   end
 
   defp to_csv(data) do
