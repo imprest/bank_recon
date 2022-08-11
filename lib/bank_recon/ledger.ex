@@ -198,7 +198,7 @@ defmodule BankRecon.Ledger do
       case code do
         "MB" ->
           [date, desc, _value, debit, credit, _bal] = x
-          [bank_date(date), String.slice(desc, 69, 40), debit, credit]
+          [bank_date(date), desc, debit, credit]
 
         "EB" ->
           [date, desc, _value, debit, credit, _bal] = x

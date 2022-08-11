@@ -156,7 +156,7 @@ defmodule BankRecon do
   end
 
   defp format_result(bank_dir, missing, uncleared, prev_month_uncleared_map) do
-    missing = to_csv(missing)
+    missing = csv(missing)
     uncleared = to_csv(uncleared)
     prev_month_uncleared = to_csv(csv(prev_month_uncleared_map))
 
@@ -173,16 +173,22 @@ defmodule BankRecon do
   end
 
   defp csv(map) do
-    map
-    |> Enum.into([], fn {_id, x} -> x end)
-    |> Enum.sort_by(& &1.date, Date)
-    |> Enum.map(fn x ->
-      if x.drcr === "D" do
-        [x.id, "#{x.desc} #{x.post_desc}", x.amount, ""]
-      else
-        [x.id, "#{x.desc} #{x.post_desc}", "", x.amount]
-      end
-    end)
+    case Kernel.is_map(map) do
+      true ->
+        map
+        |> Enum.into([], fn {_id, x} -> x end)
+        |> Enum.sort_by(& &1.date, Date)
+        |> Enum.map(fn x ->
+          if x.drcr === "D" do
+            [x.id, "#{x.desc} #{x.post_desc}", x.amount, ""]
+          else
+            [x.id, "#{x.desc} #{x.post_desc}", "", x.amount]
+          end
+        end)
+
+      false ->
+        Enum.map(map, fn [id, desc, debit, credit] -> "#{id},\"#{desc}\",#{debit},#{credit}\n" end)
+    end
   end
 
   defp to_csv(data) do
