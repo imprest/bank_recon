@@ -229,7 +229,7 @@ defmodule BankRecon.Ledger do
 
         "GB" ->
           [date, _ref, _value, debit, credit, _bal, _, desc] = x
-          [bank_date(date, "-"), desc, debit, credit]
+          [bank_date(date), desc, debit, credit]
       end
     end)
   end
@@ -237,8 +237,13 @@ defmodule BankRecon.Ledger do
   defp zero_to_empty("0"), do: ""
   defp zero_to_empty(string), do: string
 
-  defp bank_date(date, split_on \\ " ") do
-    [d, m, y] = String.split(date, split_on)
+  defp bank_date(date) do
+    [d, m, y] =
+      if String.contains?(date, "-") do
+        String.split(date, "-")
+      else
+        String.split(date, " ")
+      end
 
     if String.length(y) > 2 do
       Date.new!(String.to_integer(y), month_to_num(m), String.to_integer(d))
